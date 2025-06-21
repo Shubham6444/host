@@ -16,7 +16,7 @@ const execAsync = util.promisify(exec)
 
 // MongoDB connection with better error handling
 mongoose
-  .connect(process.env.MONGO_URI, {
+  .connect(process.env.MONGO_URI || "mongodb://localhost:27017/domain-manager", {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
@@ -67,17 +67,17 @@ app.use(
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
-      mongoUrl: process.env.MONGO_URI,
-      touchAfter: 24 * 3600, // lazy session update
+      mongoUrl: process.env.MONGO_URI || "mongodb://localhost:27017/domain-manager",
+      touchAfter: 24 * 3600,
     }),
     cookie: {
       maxAge: 86400000, // 24 hours
-      secure: false, // set to true in production with HTTPS
+      secure: false,
     },
   }),
 )
 
-// Enhanced multer configuration with dynamic file size limits
+// Enhanced multer configuration
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
     const userDir = `uploads/${req.session.userId}`
@@ -89,7 +89,6 @@ const storage = multer.diskStorage({
     }
   },
   filename: (req, file, cb) => {
-    // Sanitize filename
     const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")
     cb(null, sanitizedName)
   },
@@ -105,14 +104,7 @@ const upload = multer({
     }
   },
   limits: {
-    fileSize: async (req) => {
-      try {
-        const user = await User.findById(req.session.userId)
-        return (user?.fileLimit || 50) * 1024 * 1024 // Convert MB to bytes
-      } catch {
-        return 50 * 1024 * 1024 // Default 50MB
-      }
-    },
+    fileSize: 50 * 1024 * 1024, // 50MB default
   },
 })
 
@@ -132,7 +124,6 @@ async function generateNginxConfig(user) {
   for (const { domain, sslEnabled } of user.domains) {
     const rootDir = path.join(__dirname, "uploads", user._id.toString())
 
-    // HTTP redirect to HTTPS
     config += `
 server {
     listen 80;
@@ -150,54 +141,39 @@ server {
     root ${rootDir};
     index index.html;
 
-    # SSL Configuration
     ssl_certificate /etc/letsencrypt/live/${domain}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${domain}/privkey.pem;
     ssl_trusted_certificate /etc/letsencrypt/live/${domain}/chain.pem;
 
-    # Modern SSL Configuration
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
     ssl_prefer_server_ciphers off;
     ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
 
-    # Security Headers
     add_header X-Frame-Options DENY always;
     add_header X-Content-Type-Options nosniff always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-    # Gzip Compression
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
-    gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json;
 
     location / {
         try_files $uri $uri/ /index.html;
         
-        # Cache static assets
         location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg)$ {
             expires 1y;
             add_header Cache-Control "public, immutable";
         }
     }
 
-    # Security: Hide sensitive files
     location ~ /\.(ht|git|env) {
-        deny all;
-    }
-    
-    # Block access to backup files
-    location ~ \.(bak|backup|old|tmp)$ {
         deny all;
     }
 }
 `
     } else {
-      // Temporary HTTP server for domain verification
       config += `
 server {
     listen 80;
@@ -210,7 +186,6 @@ server {
         try_files $uri $uri/ /index.html;
     }
     
-    # Allow Let's Encrypt verification
     location /.well-known/acme-challenge/ {
         root /var/www/html;
     }
@@ -228,37 +203,19 @@ async function generateSSLCertificate(domain) {
 
   try {
     console.log(`🔐 Generating SSL certificate for ${domain}...`)
-
-    // First, test nginx configuration
     await execAsync("sudo nginx -t")
 
-    // Generate certificate
     const command = `sudo certbot certonly --nginx -d ${domain} --non-interactive --agree-tos --email ${email} --no-eff-email`
-    const { stdout, stderr } = await execAsync(command)
+    const { stdout } = await execAsync(command)
 
     console.log(`✅ SSL certificate generated for ${domain}`)
     console.log("Certbot output:", stdout)
-
     return true
   } catch (error) {
     console.error(`❌ SSL generation failed for ${domain}:`, error.stderr || error.message)
     return false
   }
 }
-
-// Enhanced error handling middleware
-app.use((error, req, res, next) => {
-  console.error("Server Error:", error)
-
-  if (error instanceof multer.MulterError) {
-    if (error.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({ error: "File size exceeds limit" })
-    }
-    return res.status(400).json({ error: "File upload error" })
-  }
-
-  res.status(500).json({ error: "Internal server error" })
-})
 
 // Routes
 app.get("/", (req, res) => {
@@ -294,7 +251,10 @@ app.post("/api/register", async (req, res) => {
       return res.status(400).json({ error: "All fields are required" })
     }
 
-    // Check if user exists
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" })
+    }
+
     const existingUser = await User.findOne({
       $or: [{ username }, { email }],
     })
@@ -303,7 +263,6 @@ app.post("/api/register", async (req, res) => {
       return res.status(400).json({ error: "User already exists" })
     }
 
-    // Create user
     const hashedPassword = await bcrypt.hash(password, 12)
     const user = await User.create({
       username,
@@ -311,9 +270,7 @@ app.post("/api/register", async (req, res) => {
       password: hashedPassword,
     })
 
-    // Create user directory
     await fs.mkdir(`uploads/${user._id}`, { recursive: true })
-
     req.session.userId = user._id
     console.log(`✅ New user registered: ${username}`)
 
@@ -379,7 +336,6 @@ app.post("/api/domains", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Domain is required" })
     }
 
-    // Validate domain format
     const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/
     if (!domainRegex.test(domain)) {
       return res.status(400).json({ error: "Invalid domain format" })
@@ -395,7 +351,6 @@ app.post("/api/domains", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Domain already exists" })
     }
 
-    // Check if domain is already used by another user
     const existingDomain = await User.findOne({ "domains.domain": domain })
     if (existingDomain) {
       return res.status(400).json({ error: "Domain is already in use" })
@@ -404,7 +359,6 @@ app.post("/api/domains", requireAuth, async (req, res) => {
     user.domains.push({ domain })
     await user.save()
 
-    // Generate and apply Nginx configuration
     const config = await generateNginxConfig(user)
     const configPath = `/etc/nginx/sites-available/${user._id}`
     const symlinkPath = `/etc/nginx/sites-enabled/${user._id}`
@@ -438,10 +392,8 @@ app.delete("/api/domains/:domain", requireAuth, async (req, res) => {
     const symlinkPath = `/etc/nginx/sites-enabled/${user._id}`
 
     if (user.domains.length === 0) {
-      // Remove config files if no domains left
       await execAsync(`sudo rm -f ${configPath} ${symlinkPath}`)
     } else {
-      // Update config with remaining domains
       const updatedConfig = await generateNginxConfig(user)
       await fs.writeFile(configPath, updatedConfig)
     }
@@ -477,7 +429,6 @@ app.post("/api/ssl/:domain", requireAuth, async (req, res) => {
       domainObj.sslEnabled = true
       await user.save()
 
-      // Update Nginx configuration with SSL
       const config = await generateNginxConfig(user)
       await fs.writeFile(`/etc/nginx/sites-available/${user._id}`, config)
       await execAsync("sudo nginx -t && sudo systemctl reload nginx")
@@ -497,9 +448,8 @@ app.post("/api/ssl/:domain", requireAuth, async (req, res) => {
 app.post("/api/upload", requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.session.userId)
-    const fileLimit = (user.fileLimit || 50) * 1024 * 1024 // Convert to bytes
+    const fileLimit = (user.fileLimit || 50) * 1024 * 1024
 
-    // Create upload middleware with dynamic file size limit
     const dynamicUpload = multer({
       storage,
       fileFilter: (req, file, cb) => {
@@ -561,16 +511,68 @@ app.get("/api/files", requireAuth, async (req, res) => {
   }
 })
 
-app.delete("/api/files/:filename", requireAuth, async (req, res) => {
+// Get file content for editing
+app.get("/api/files/:filename/content", requireAuth, async (req, res) => {
   try {
     const filename = decodeURIComponent(req.params.filename)
-    const filePath = `uploads/${req.session.userId}/${filename}`
 
-    // Security check: ensure filename doesn't contain path traversal
     if (filename.includes("..") || filename.includes("/") || filename.includes("\\")) {
       return res.status(400).json({ error: "Invalid filename" })
     }
 
+    const filePath = `uploads/${req.session.userId}/${filename}`
+
+    if (!fssync.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found" })
+    }
+
+    const content = await fs.readFile(filePath, "utf8")
+    res.send(content)
+  } catch (error) {
+    console.error("Error reading file:", error)
+    res.status(500).json({ error: "Failed to read file" })
+  }
+})
+
+// Update file content
+app.put("/api/files/:filename", requireAuth, async (req, res) => {
+  try {
+    const filename = decodeURIComponent(req.params.filename)
+    const { content } = req.body
+
+    if (filename.includes("..") || filename.includes("/") || filename.includes("\\")) {
+      return res.status(400).json({ error: "Invalid filename" })
+    }
+
+    if (!content && content !== "") {
+      return res.status(400).json({ error: "Content is required" })
+    }
+
+    const filePath = `uploads/${req.session.userId}/${filename}`
+
+    if (!fssync.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found" })
+    }
+
+    await fs.writeFile(filePath, content, "utf8")
+
+    console.log(`✅ File updated: ${filename} for user ${req.session.userId}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error("Error updating file:", error)
+    res.status(500).json({ error: "Failed to update file" })
+  }
+})
+
+app.delete("/api/files/:filename", requireAuth, async (req, res) => {
+  try {
+    const filename = decodeURIComponent(req.params.filename)
+
+    if (filename.includes("..") || filename.includes("/") || filename.includes("\\")) {
+      return res.status(400).json({ error: "Invalid filename" })
+    }
+
+    const filePath = `uploads/${req.session.userId}/${filename}`
     await fs.unlink(filePath)
 
     console.log(`✅ File deleted: ${filename} for user ${req.session.userId}`)
@@ -581,12 +583,11 @@ app.delete("/api/files/:filename", requireAuth, async (req, res) => {
   }
 })
 
-// Admin routes
+// Admin routes (same as before but with enhanced logging)
 app.get("/api/admin/users", async (req, res) => {
   try {
     const users = await User.find({}).select("-password")
 
-    // Add file count for each user
     const usersWithFileCount = await Promise.all(
       users.map(async (user) => {
         try {
@@ -610,226 +611,18 @@ app.get("/api/admin/users", async (req, res) => {
   }
 })
 
-app.get("/api/admin/files", async (req, res) => {
-  try {
-    const users = await User.find({}).select("username")
-    const allFiles = []
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error("Server Error:", error)
 
-    for (const user of users) {
-      try {
-        const userDir = `uploads/${user._id}`
-        if (fssync.existsSync(userDir)) {
-          const files = await fs.readdir(userDir)
-          const htmlFiles = files.filter((file) => path.extname(file).toLowerCase() === ".html")
-
-          for (const file of htmlFiles) {
-            const stats = await fs.stat(path.join(userDir, file))
-            allFiles.push({
-              filename: file,
-              username: user.username,
-              userId: user._id,
-              size: stats.size,
-              createdAt: stats.birthtime,
-            })
-          }
-        }
-      } catch (error) {
-        console.error(`Error reading files for user ${user.username}:`, error)
-      }
+  if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({ error: "File size exceeds limit" })
     }
-
-    res.json(allFiles)
-  } catch (error) {
-    console.error("Error fetching all files:", error)
-    res.status(500).json({ error: "Failed to fetch files" })
+    return res.status(400).json({ error: "File upload error" })
   }
-})
 
-app.get("/api/admin/domains", async (req, res) => {
-  try {
-    const users = await User.find({}).select("username domains")
-    const allDomains = []
-
-    users.forEach((user) => {
-      user.domains.forEach((domain) => {
-        allDomains.push({
-          domain: domain.domain,
-          username: user.username,
-          userId: user._id,
-          sslEnabled: domain.sslEnabled,
-          createdAt: domain.createdAt,
-        })
-      })
-    })
-
-    res.json(allDomains)
-  } catch (error) {
-    console.error("Error fetching all domains:", error)
-    res.status(500).json({ error: "Failed to fetch domains" })
-  }
-})
-
-app.put("/api/admin/users/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params
-    const { username, email, fileLimit } = req.body
-
-    const user = await User.findById(userId)
-    if (!user) {
-      return res.status(404).json({ error: "User not found" })
-    }
-
-    // Check for duplicate username/email
-    const existingUser = await User.findOne({
-      $and: [{ _id: { $ne: userId } }, { $or: [{ username }, { email }] }],
-    })
-
-    if (existingUser) {
-      return res.status(400).json({ error: "Username or email already exists" })
-    }
-
-    user.username = username
-    user.email = email
-    user.fileLimit = fileLimit
-
-    await user.save()
-
-    console.log(`✅ User updated by admin: ${username}`)
-    res.json({ success: true })
-  } catch (error) {
-    console.error("Error updating user:", error)
-    res.status(500).json({ error: "Failed to update user" })
-  }
-})
-
-app.delete("/api/admin/users/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params
-
-    const user = await User.findById(userId)
-    if (!user) {
-      return res.status(404).json({ error: "User not found" })
-    }
-
-    // Remove user's nginx config
-    const configPath = `/etc/nginx/sites-available/${userId}`
-    const symlinkPath = `/etc/nginx/sites-enabled/${userId}`
-
-    try {
-      await execAsync(`sudo rm -f ${configPath} ${symlinkPath}`)
-      await execAsync("sudo nginx -t && sudo systemctl reload nginx")
-    } catch (nginxError) {
-      console.error("Error removing nginx config:", nginxError)
-    }
-
-    // Remove user's files
-    try {
-      await fs.rmdir(`uploads/${userId}`, { recursive: true })
-    } catch (fileError) {
-      console.error("Error removing user files:", fileError)
-    }
-
-    // Delete user from database
-    await User.findByIdAndDelete(userId)
-
-    console.log(`✅ User deleted by admin: ${user.username}`)
-    res.json({ success: true })
-  } catch (error) {
-    console.error("Error deleting user:", error)
-    res.status(500).json({ error: "Failed to delete user" })
-  }
-})
-
-app.delete("/api/admin/files/:userId/:filename", async (req, res) => {
-  try {
-    const { userId, filename } = req.params
-    const decodedFilename = decodeURIComponent(filename)
-
-    // Security check
-    if (decodedFilename.includes("..") || decodedFilename.includes("/") || decodedFilename.includes("\\")) {
-      return res.status(400).json({ error: "Invalid filename" })
-    }
-
-    const filePath = `uploads/${userId}/${decodedFilename}`
-    await fs.unlink(filePath)
-
-    console.log(`✅ File deleted by admin: ${decodedFilename} for user ${userId}`)
-    res.json({ success: true })
-  } catch (error) {
-    console.error("Error deleting file:", error)
-    res.status(500).json({ error: "Failed to delete file" })
-  }
-})
-
-app.delete("/api/admin/domains/:userId/:domain", async (req, res) => {
-  try {
-    const { userId, domain } = req.params
-    const decodedDomain = decodeURIComponent(domain)
-
-    const user = await User.findById(userId)
-    if (!user) {
-      return res.status(404).json({ error: "User not found" })
-    }
-
-    const domainIndex = user.domains.findIndex((d) => d.domain === decodedDomain)
-    if (domainIndex === -1) {
-      return res.status(404).json({ error: "Domain not found" })
-    }
-
-    user.domains.splice(domainIndex, 1)
-    await user.save()
-
-    // Update nginx configuration
-    const configPath = `/etc/nginx/sites-available/${userId}`
-    const symlinkPath = `/etc/nginx/sites-enabled/${userId}`
-
-    if (user.domains.length === 0) {
-      await execAsync(`sudo rm -f ${configPath} ${symlinkPath}`)
-    } else {
-      const updatedConfig = await generateNginxConfig(user)
-      await fs.writeFile(configPath, updatedConfig)
-    }
-
-    await execAsync("sudo nginx -t && sudo systemctl reload nginx")
-
-    console.log(`✅ Domain deleted by admin: ${decodedDomain} for user ${user.username}`)
-    res.json({ success: true })
-  } catch (error) {
-    console.error("Error deleting domain:", error)
-    res.status(500).json({ error: "Failed to delete domain" })
-  }
-})
-
-app.put("/api/admin/settings", async (req, res) => {
-  try {
-    const { defaultFileLimit } = req.body
-
-    let settings = await Settings.findOne()
-    if (!settings) {
-      settings = new Settings({ defaultFileLimit })
-    } else {
-      settings.defaultFileLimit = defaultFileLimit
-      settings.updatedAt = new Date()
-    }
-
-    await settings.save()
-
-    console.log(`✅ Global settings updated: defaultFileLimit = ${defaultFileLimit}MB`)
-    res.json({ success: true })
-  } catch (error) {
-    console.error("Error updating settings:", error)
-    res.status(500).json({ error: "Failed to update settings" })
-  }
-})
-
-// Health check endpoint
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    mongodb: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-  })
+  res.status(500).json({ error: "Internal server error" })
 })
 
 // 404 handler

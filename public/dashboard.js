@@ -1,11 +1,13 @@
 let userData = null
 let maxFileSize = 50 * 1024 * 1024 // 50MB default
+let currentEditingFile = null
 
 // Initialize dashboard
 document.addEventListener("DOMContentLoaded", () => {
   initializeSidebar()
   loadUserData()
   setupFileUpload()
+  setupFileEditor()
 })
 
 // Sidebar functionality
@@ -51,7 +53,8 @@ function switchSection(section) {
   const titles = {
     domains: "Domain Management",
     files: "File Management",
-    nginx: "Nginx Configuration",
+    editor: "File Editor",
+    nginx: "Server Configuration",
     settings: "Account Settings",
   }
 
@@ -84,6 +87,7 @@ async function loadUserData() {
     document.getElementById("settingsUsername").textContent = userData.username
     document.getElementById("settingsEmail").textContent = userData.email
     document.getElementById("domainsCount").textContent = userData.domains.length
+    document.getElementById("accountCreated").textContent = new Date(userData.createdAt).toLocaleDateString()
 
     // Update file limit
     if (userData.fileLimit) {
@@ -107,7 +111,7 @@ function renderDomains() {
   const domainsList = document.getElementById("domainsList")
 
   if (userData.domains.length === 0) {
-    domainsList.innerHTML = '<p class="no-data">No domains added yet</p>'
+    domainsList.innerHTML = '<p class="no-data">No domains added yet. Add your first domain above!</p>'
     return
   }
 
@@ -118,12 +122,12 @@ function renderDomains() {
             <div class="domain-info">
                 <h3>${domain.domain}</h3>
                 <span class="ssl-status ${domain.sslEnabled ? "ssl-enabled" : "ssl-disabled"}">
-                    ${domain.sslEnabled ? "SSL Enabled" : "SSL Disabled"}
+                    ${domain.sslEnabled ? "🔒 SSL Enabled" : "🔓 SSL Disabled"}
                 </span>
             </div>
             <div class="domain-actions">
-                ${!domain.sslEnabled ? `<button onclick="enableSSL('${domain.domain}')" class="btn btn-small btn-primary">Enable SSL</button>` : ""}
-                <button onclick="deleteDomain('${domain.domain}')" class="btn btn-danger btn-small">Delete</button>
+                ${!domain.sslEnabled ? `<button onclick="enableSSL('${domain.domain}')" class="btn btn-success btn-small">🔒 Enable SSL</button>` : ""}
+                <button onclick="deleteDomain('${domain.domain}')" class="btn btn-danger btn-small">🗑️ Delete</button>
             </div>
         </div>
     `,
@@ -141,7 +145,7 @@ document.getElementById("addDomainBtn").addEventListener("click", async () => {
   }
 
   if (userData.domains.length >= 2) {
-    showMessage("Maximum 2 domains allowed", "error")
+    showMessage("Maximum 2 domains allowed per account", "error")
     return
   }
 
@@ -156,7 +160,7 @@ document.getElementById("addDomainBtn").addEventListener("click", async () => {
     const result = await response.json()
 
     if (result.success) {
-      showMessage("Domain added successfully", "success")
+      showMessage("Domain added successfully! 🎉", "success")
       document.getElementById("domainInput").value = ""
       await loadUserData()
     } else {
@@ -172,7 +176,7 @@ document.getElementById("addDomainBtn").addEventListener("click", async () => {
 
 // Delete domain
 async function deleteDomain(domain) {
-  if (!confirm(`Are you sure you want to delete ${domain}?`)) {
+  if (!confirm(`Are you sure you want to delete ${domain}? This action cannot be undone.`)) {
     return
   }
 
@@ -202,7 +206,7 @@ async function deleteDomain(domain) {
 async function enableSSL(domain) {
   try {
     showProcessing(true)
-    showMessage("Generating SSL certificate... This may take a few minutes", "success")
+    showMessage("Generating SSL certificate... This may take a few minutes ⏳", "info")
 
     const response = await fetch(`/api/ssl/${encodeURIComponent(domain)}`, {
       method: "POST",
@@ -211,7 +215,7 @@ async function enableSSL(domain) {
     const result = await response.json()
 
     if (result.success) {
-      showMessage("SSL certificate generated successfully", "success")
+      showMessage("SSL certificate generated successfully! 🔒", "success")
       await loadUserData()
     } else {
       showMessage(result.error, "error")
@@ -255,11 +259,21 @@ function setupFileUpload() {
 
     if (files.length > 0) {
       fileInput.files = createFileList(files)
+      showMessage(`${files.length} file(s) selected for upload`, "info")
+    } else {
+      showMessage("Please drop HTML files only", "error")
     }
   })
 
   // Upload button
   uploadBtn.addEventListener("click", uploadFiles)
+
+  // File input change
+  fileInput.addEventListener("change", (e) => {
+    if (e.target.files.length > 0) {
+      showMessage(`${e.target.files.length} file(s) selected`, "info")
+    }
+  })
 }
 
 // Create FileList from array
@@ -300,7 +314,7 @@ async function uploadFiles() {
     const result = await response.json()
 
     if (result.success) {
-      showMessage("Files uploaded successfully", "success")
+      showMessage(`${files.length} file(s) uploaded successfully! 📁`, "success")
       fileInput.value = ""
       await loadFiles()
     } else {
@@ -323,7 +337,7 @@ async function loadFiles() {
     const filesList = document.getElementById("filesList")
 
     if (files.length === 0) {
-      filesList.innerHTML = '<p class="no-data">No files uploaded yet</p>'
+      filesList.innerHTML = '<p class="no-data">No files uploaded yet. Upload your first HTML file above! 📁</p>'
       return
     }
 
@@ -331,8 +345,14 @@ async function loadFiles() {
       .map(
         (file) => `
             <div class="file-item">
-                <span class="file-name">${file}</span>
-                <button onclick="deleteFile('${file}')" class="btn btn-danger btn-small">Delete</button>
+                <div class="file-info">
+                    <span class="file-name">${file}</span>
+                    <span class="file-size">HTML File</span>
+                </div>
+                <div class="file-actions">
+                    <button onclick="editFile('${file}')" class="btn btn-primary btn-small">✏️ Edit</button>
+                    <button onclick="deleteFile('${file}')" class="btn btn-danger btn-small">🗑️ Delete</button>
+                </div>
             </div>
         `,
       )
@@ -342,9 +362,93 @@ async function loadFiles() {
   }
 }
 
+// Setup file editor
+function setupFileEditor() {
+  const saveBtn = document.getElementById("saveFileBtn")
+  const closeBtn = document.getElementById("closeEditorBtn")
+
+  saveBtn.addEventListener("click", saveFile)
+  closeBtn.addEventListener("click", closeEditor)
+}
+
+// Edit file
+async function editFile(filename) {
+  try {
+    showProcessing(true)
+    const response = await fetch(`/api/files/${encodeURIComponent(filename)}/content`)
+
+    if (!response.ok) {
+      throw new Error("Failed to load file content")
+    }
+
+    const content = await response.text()
+
+    // Switch to editor section
+    switchSection("editor")
+    document.querySelector('[data-section="editor"]').classList.add("active")
+    document.querySelectorAll(".nav-item").forEach((nav) => nav.classList.remove("active"))
+    document.querySelector('[data-section="editor"]').classList.add("active")
+
+    // Show editor and populate content
+    document.getElementById("fileEditor").style.display = "block"
+    document.getElementById("editorPlaceholder").style.display = "none"
+    document.getElementById("editorTitle").textContent = filename
+    document.getElementById("codeEditor").value = content
+
+    currentEditingFile = filename
+    showMessage(`File ${filename} loaded for editing ✏️`, "info")
+  } catch (error) {
+    console.error("Error loading file for editing:", error)
+    showMessage("Failed to load file for editing", "error")
+  } finally {
+    showProcessing(false)
+  }
+}
+
+// Save file
+async function saveFile() {
+  if (!currentEditingFile) {
+    showMessage("No file is currently being edited", "error")
+    return
+  }
+
+  try {
+    showProcessing(true)
+    const content = document.getElementById("codeEditor").value
+
+    const response = await fetch(`/api/files/${encodeURIComponent(currentEditingFile)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    })
+
+    const result = await response.json()
+
+    if (result.success) {
+      showMessage(`File ${currentEditingFile} saved successfully! 💾`, "success")
+    } else {
+      showMessage(result.error, "error")
+    }
+  } catch (error) {
+    console.error("Error saving file:", error)
+    showMessage("Failed to save file", "error")
+  } finally {
+    showProcessing(false)
+  }
+}
+
+// Close editor
+function closeEditor() {
+  document.getElementById("fileEditor").style.display = "none"
+  document.getElementById("editorPlaceholder").style.display = "block"
+  document.getElementById("codeEditor").value = ""
+  currentEditingFile = null
+  showMessage("Editor closed", "info")
+}
+
 // Delete file
 async function deleteFile(filename) {
-  if (!confirm(`Are you sure you want to delete ${filename}?`)) {
+  if (!confirm(`Are you sure you want to delete ${filename}? This action cannot be undone.`)) {
     return
   }
 
@@ -357,7 +461,13 @@ async function deleteFile(filename) {
     const result = await response.json()
 
     if (result.success) {
-      showMessage("File deleted successfully", "success")
+      showMessage("File deleted successfully 🗑️", "success")
+
+      // Close editor if this file was being edited
+      if (currentEditingFile === filename) {
+        closeEditor()
+      }
+
       await loadFiles()
     } else {
       showMessage(result.error, "error")
@@ -374,7 +484,10 @@ async function deleteFile(filename) {
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   try {
     await fetch("/api/logout", { method: "POST" })
-    window.location.href = "/"
+    showMessage("Logged out successfully", "success")
+    setTimeout(() => {
+      window.location.href = "/"
+    }, 1000)
   } catch (error) {
     console.error("Error logging out:", error)
     showMessage("Failed to logout", "error")
@@ -395,5 +508,16 @@ window.addEventListener("resize", () => {
   const sidebar = document.getElementById("sidebar")
   if (window.innerWidth > 768) {
     sidebar.classList.remove("active")
+  }
+})
+
+// Auto-save functionality for editor
+let autoSaveTimeout
+document.getElementById("codeEditor").addEventListener("input", () => {
+  if (currentEditingFile) {
+    clearTimeout(autoSaveTimeout)
+    autoSaveTimeout = setTimeout(() => {
+      saveFile()
+    }, 3000) // Auto-save after 3 seconds of inactivity
   }
 })

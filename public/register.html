@@ -5,36 +5,62 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Register - Domain Manager</title>
     <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
+    <div class="auth-container">
         <div class="auth-form">
-            <h2>Register</h2>
+            <h2>Create Account</h2>
             <form id="registerForm">
                 <div class="form-group">
                     <label for="username">Username</label>
-                    <input type="text" id="username" name="username" required>
+                    <input type="text" id="username" name="username" required placeholder="Choose a username">
                 </div>
                 <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" name="email" required>
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" required placeholder="Enter your email">
                 </div>
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required>
+                    <input type="password" id="password" name="password" required placeholder="Create a password" minlength="6">
                 </div>
-                <button type="submit" class="btn btn-primary btn-full">Register</button>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" required placeholder="Confirm your password">
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">
+                    <span class="btn-text">Create Account</span>
+                    <span class="loading" style="display: none;"></span>
+                </button>
             </form>
-            <p class="auth-link">Already have an account? <a href="/login">Login here</a></p>
+            <p class="auth-link">Already have an account? <a href="/login">Sign in here</a></p>
         </div>
         <div id="message" class="message"></div>
     </div>
 
     <script>
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        const form = document.getElementById('registerForm');
+        const btnText = document.querySelector('.btn-text');
+        const loading = document.querySelector('.loading');
+
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (password !== confirmPassword) {
+                showMessage('Passwords do not match', 'error');
+                return;
+            }
+            
+            // Show loading state
+            btnText.style.display = 'none';
+            loading.style.display = 'inline-block';
+            
             const formData = new FormData(e.target);
             const data = Object.fromEntries(formData);
+            delete data.confirmPassword; // Remove confirm password from data
             
             try {
                 const response = await fetch('/api/register', {
@@ -46,12 +72,19 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    window.location.href = '/dashboard';
+                    showMessage('Account created successfully! Redirecting...', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1000);
                 } else {
                     showMessage(result.error, 'error');
                 }
             } catch (error) {
-                showMessage('Registration failed', 'error');
+                showMessage('Registration failed. Please try again.', 'error');
+            } finally {
+                // Hide loading state
+                btnText.style.display = 'inline';
+                loading.style.display = 'none';
             }
         });
 
