@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>डैशबोर्ड - होस्टिंग पैनल</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>होस्टिंग पैनल डैशबोर्ड</h1>
+            <div class="header-actions">
+                <span id="welcomeUser"></span>
+                <button id="fileManagerBtn" class="btn btn-primary">
+                    <i class="fas fa-folder"></i>
+                    फ़ाइल मैनेजर
+                </button>
+                <button id="logoutBtn" class="btn btn-secondary">लॉग आउट</button>
+            </div>
+        </header>
+
+        <main class="main">
+            <!-- System Overview -->
+            <section class="section">
+                <h2><i class="fas fa-tachometer-alt"></i> सिस्टम अवलोकन</h2>
+                <div class="system-stats">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-microchip"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="cpuUsage">0%</h3>
+                            <p>CPU उपयोग</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-memory"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="memoryUsage">0%</h3>
+                            <p>मेमोरी उपयोग</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-hdd"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="diskUsage">0%</h3>
+                            <p>डिस्क उपयोग</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-network-wired"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="networkStatus">ऑनलाइन</h3>
+                            <p>नेटवर्क स्थिति</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Actions -->
+            <section class="section">
+                <h2><i class="fas fa-bolt"></i> त्वरित कार्य</h2>
+                <div class="quick-actions">
+                    <button class="action-btn" onclick="openFileManager()">
+                        <i class="fas fa-folder-open"></i>
+                        <span>फ़ाइल मैनेजर</span>
+                    </button>
+                    
+                    <button class="action-btn" onclick="openTerminal()">
+                        <i class="fas fa-terminal"></i>
+                        <span>टर्मिनल</span>
+                    </button>
+                    
+                    <button class="action-btn" onclick="viewLogs()">
+                        <i class="fas fa-file-alt"></i>
+                        <span>लॉग देखें</span>
+                    </button>
+                    
+                    <button class="action-btn" onclick="manageServices()">
+                        <i class="fas fa-cogs"></i>
+                        <span>सेवाएं</span>
+                    </button>
+                    
+                    <button class="action-btn" onclick="backupSystem()">
+                        <i class="fas fa-download"></i>
+                        <span>बैकअप</span>
+                    </button>
+                    
+                    <button class="action-btn" onclick="systemSettings()">
+                        <i class="fas fa-sliders-h"></i>
+                        <span>सेटिंग्स</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Domain Management Section -->
+            <section class="section">
+                <h2><i class="fas fa-globe"></i> डोमेन प्रबंधन</h2>
+                <div class="domain-form">
+                    <input type="text" id="domainInput" placeholder="example.com" maxlength="100">
+                    <button id="addDomainBtn" class="btn btn-primary">डोमेन जोड़ें</button>
+                </div>
+                
+                <div id="domainsList" class="domains-list"></div>
+            </section>
+
+            <!-- File Upload Section -->
+            <section class="section">
+                <h2><i class="fas fa-upload"></i> HTML फ़ाइल अपलोड</h2>
+                <div class="upload-form">
+                    <input type="file" id="fileInput" multiple accept=".html,.css,.js" class="file-input">
+                    <button id="uploadBtn" class="btn btn-primary">फ़ाइलें अपलोड करें</button>
+                </div>
+                
+                <div id="filesList" class="files-list"></div>
+            </section>
+
+            <!-- System Services Section -->
+            <section class="section">
+                <h2><i class="fas fa-server"></i> सिस्टम सेवाएं</h2>
+                <div class="services-grid">
+                    <div class="service-card">
+                        <div class="service-header">
+                            <h3><i class="fas fa-globe"></i> Nginx</h3>
+                            <span id="nginxStatus" class="service-status status-running">चल रहा है</span>
+                        </div>
+                        <div class="service-actions">
+                            <button onclick="controlService('nginx', 'restart')" class="btn btn-small">रीस्टार्ट</button>
+                            <button onclick="controlService('nginx', 'stop')" class="btn btn-small btn-danger">बंद करें</button>
+                        </div>
+                    </div>
+                    
+                    <div class="service-card">
+                        <div class="service-header">
+                            <h3><i class="fas fa-database"></i> MySQL</h3>
+                            <span id="mysqlStatus" class="service-status status-running">चल रहा है</span>
+                        </div>
+                        <div class="service-actions">
+                            <button onclick="controlService('mysql', 'restart')" class="btn btn-small">रीस्टार्ट</button>
+                            <button onclick="controlService('mysql', 'stop')" class="btn btn-small btn-danger">बंद करें</button>
+                        </div>
+                    </div>
+                    
+                    <div class="service-card">
+                        <div class="service-header">
+                            <h3><i class="fas fa-code"></i> PHP-FPM</h3>
+                            <span id="phpStatus" class="service-status status-running">चल रहा है</span>
+                        </div>
+                        <div class="service-actions">
+                            <button onclick="controlService('php-fpm', 'restart')" class="btn btn-small">रीस्टार्ट</button>
+                            <button onclick="controlService('php-fpm', 'stop')" class="btn btn-small btn-danger">बंद करें</button>
+                        </div>
+                    </div>
+                    
+                    <div class="service-card">
+                        <div class="service-header">
+                            <h3><i class="fas fa-shield-alt"></i> Firewall</h3>
+                            <span id="firewallStatus" class="service-status status-running">सक्रिय</span>
+                        </div>
+                        <div class="service-actions">
+                            <button onclick="controlService('ufw', 'enable')" class="btn btn-small">सक्रिय करें</button>
+                            <button onclick="controlService('ufw', 'disable')" class="btn btn-small btn-danger">निष्क्रिय करें</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recent Activity -->
+            <section class="section">
+                <h2><i class="fas fa-history"></i> हाल की गतिविधि</h2>
+                <div id="activityLog" class="activity-log">
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="fas fa-upload"></i>
+                        </div>
+                        <div class="activity-content">
+                            <p><strong>फ़ाइल अपलोड:</strong> index.html</p>
+                            <span class="activity-time">2 मिनट पहले</span>
+                        </div>
+                    </div>
+                    
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="fas fa-globe"></i>
+                        </div>
+                        <div class="activity-content">
+                            <p><strong>डोमेन जोड़ा गया:</strong> example.com</p>
+                            <span class="activity-time">5 मिनट पहले</span>
+                        </div>
+                    </div>
+                    
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="fas fa-sync-alt"></i>
+                        </div>
+                        <div class="activity-content">
+                            <p><strong>सेवा रीस्टार्ट:</strong> Nginx</p>
+                            <span class="activity-time">10 मिनट पहले</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <div id="message" class="message"></div>
+    </div>
+
+    <!-- Terminal Modal -->
+    <div id="terminalModal" class="fm-modal">
+        <div class="fm-modal-content terminal-modal">
+            <div class="terminal-header">
+                <h3><i class="fas fa-terminal"></i> टर्मिनल</h3>
+                <button id="closeTerminal" class="btn btn-small">&times;</button>
+            </div>
+            <div id="terminal" class="terminal-container">
+                <div class="terminal-output" id="terminalOutput"></div>
+                <div class="terminal-input-line">
+                    <span class="terminal-prompt">root@server:~$ </span>
+                    <input type="text" id="terminalInput" class="terminal-input" autocomplete="off">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Additional Dashboard Styles */
+        .system-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .stat-icon {
+            font-size: 2rem;
+            opacity: 0.8;
+        }
+
+        .stat-info h3 {
+            font-size: 1.8rem;
+            margin: 0;
+        }
+
+        .stat-info p {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 0.9rem;
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+
+        .action-btn {
+            background: white;
+            border: 2px solid #e1e5e9;
+            padding: 1.5rem;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+            color: #333;
+        }
+
+        .action-btn:hover {
+            border-color: #3498db;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.2);
+        }
+
+        .action-btn i {
+            font-size: 2rem;
+            color: #3498db;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .service-card {
+            background: white;
+            border: 1px solid #e1e5e9;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .service-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .service-header h3 {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .service-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-running {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-stopped {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .service-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .activity-log {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            border-bottom: 1px solid #e1e5e9;
+        }
+
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        .activity-icon {
+            width: 40px;
+            height: 40px;
+            background: #e8f4fd;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #3498db;
+        }
+
+        .activity-content {
+            flex: 1;
+        }
+
+        .activity-content p {
+            margin: 0 0 0.25rem 0;
+        }
+
+        .activity-time {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+        }
+
+        .terminal-modal {
+            min-width: 80vw;
+            min-height: 60vh;
+            max-width: 90vw;
+            max-height: 80vh;
+        }
+
+        .terminal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #e1e5e9;
+        }
+
+        .terminal-container {
+            background: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            padding: 1rem;
+            border-radius: 4px;
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .terminal-output {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 1rem;
+            white-space: pre-wrap;
+        }
+
+        .terminal-input-line {
+            display: flex;
+            align-items: center;
+        }
+
+        .terminal-prompt {
+            color: #00ff00;
+            margin-right: 0.5rem;
+        }
+
+        .terminal-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #00ff00;
+            font-family: inherit;
+            outline: none;
+        }
+    </style>
+
+    <script>
+        let userData = null;
+        let systemStats = {};
+
+        // Load user data and initialize dashboard
+        async function loadUserData() {
+            try {
+                const response = await fetch('/api/user');
+                userData = await response.json();
+                
+                document.getElementById('welcomeUser').textContent = `स्वागत, ${userData.username}!`;
+                renderDomains();
+                loadFiles();
+                loadSystemStats();
+                loadServices();
+                loadActivity();
+            } catch (error) {
+                showMessage('उपयोगकर्ता डेटा लोड करने में त्रुटि', 'error');
+            }
+        }
+
+        // Load system statistics
+        async function loadSystemStats() {
+            try {
+                const response = await fetch('/api/system/stats');
+                const stats = await response.json();
+                
+                if (stats.success) {
+                    document.getElementById('cpuUsage').textContent = stats.cpu + '%';
+                    document.getElementById('memoryUsage').textContent = stats.memory + '%';
+                    document.getElementById('diskUsage').textContent = stats.disk + '%';
+                    document.getElementById('networkStatus').textContent = stats.network ? 'ऑनलाइन' : 'ऑफलाइन';
+                }
+            } catch (error) {
+                console.error('System stats load error:', error);
+            }
+        }
+
+        // Load service statuses
+        async function loadServices() {
+            try {
+                const response = await fetch('/api/system/services');
+                const services = await response.json();
+                
+                if (services.success) {
+                    updateServiceStatus('nginx', services.nginx);
+                    updateServiceStatus('mysql', services.mysql);
+                    updateServiceStatus('php', services.php);
+                    updateServiceStatus('firewall', services.firewall);
+                }
+            } catch (error) {
+                console.error('Services load error:', error);
+            }
+        }
+
+        function updateServiceStatus(service, status) {
+            const statusElement = document.getElementById(service + 'Status');
+            if (statusElement) {
+                statusElement.textContent = status ? 'चल रहा है' : 'बंद';
+                statusElement.className = 'service-status ' + (status ? 'status-running' : 'status-stopped');
+            }
+        }
+
+        // Control system services
+        async function controlService(service, action) {
+            try {
+                const response = await fetch('/api/system/service-control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ service, action })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage(`${service} ${action} सफल`, 'success');
+                    loadServices();
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('सेवा नियंत्रण में त्रुटि', 'error');
+            }
+        }
+
+        // Load recent activity
+        async function loadActivity() {
+            try {
+                const response = await fetch('/api/system/activity');
+                const activity = await response.json();
+                
+                if (activity.success) {
+                    renderActivity(activity.logs);
+                }
+            } catch (error) {
+                console.error('Activity load error:', error);
+            }
+        }
+
+        function renderActivity(logs) {
+            const activityLog = document.getElementById('activityLog');
+            
+            if (logs.length === 0) {
+                activityLog.innerHTML = '<p class="no-data">कोई हाल की गतिविधि नहीं</p>';
+                return;
+            }
+            
+            activityLog.innerHTML = logs.map(log => `
+                <div class="activity-item">
+                    <div class="activity-icon">
+                        <i class="${getActivityIcon(log.type)}"></i>
+                    </div>
+                    <div class="activity-content">
+                        <p><strong>${log.title}:</strong> ${log.description}</p>
+                        <span class="activity-time">${formatTime(log.timestamp)}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getActivityIcon(type) {
+            const icons = {
+                'upload': 'fas fa-upload',
+                'domain': 'fas fa-globe',
+                'service': 'fas fa-sync-alt',
+                'file': 'fas fa-file',
+                'system': 'fas fa-cogs'
+            };
+            return icons[type] || 'fas fa-info-circle';
+        }
+
+        function formatTime(timestamp) {
+            const now = new Date();
+            const time = new Date(timestamp);
+            const diff = Math.floor((now - time) / 1000);
+            
+            if (diff < 60) return `${diff} सेकंड पहले`;
+            if (diff < 3600) return `${Math.floor(diff / 60)} मिनट पहले`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)} घंटे पहले`;
+            return `${Math.floor(diff / 86400)} दिन पहले`;
+        }
+
+        // Quick action functions
+        function openFileManager() {
+            window.open('/file-manager.html', '_blank');
+        }
+
+        function openTerminal() {
+            document.getElementById('terminalModal').style.display = 'flex';
+            document.getElementById('terminalInput').focus();
+        }
+
+        function viewLogs() {
+            window.open('/logs.html', '_blank');
+        }
+
+        function manageServices() {
+            // Scroll to services section
+            document.querySelector('.services-grid').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function backupSystem() {
+            if (confirm('क्या आप सिस्टम का बैकअप बनाना चाहते हैं?')) {
+                createBackup();
+            }
+        }
+
+        async function createBackup() {
+            try {
+                const response = await fetch('/api/system/backup', {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('बैकअप सफलतापूर्वक बनाया गया', 'success');
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('बैकअप बनाने में त्रुटि', 'error');
+            }
+        }
+
+        function systemSettings() {
+            window.open('/settings.html', '_blank');
+        }
+
+        // Terminal functionality
+        let terminalHistory = [];
+        let historyIndex = -1;
+
+        document.getElementById('terminalInput').addEventListener('keydown', async (e) => {
+            if (e.key === 'Enter') {
+                const command = e.target.value.trim();
+                if (command) {
+                    await executeCommand(command);
+                    terminalHistory.unshift(command);
+                    historyIndex = -1;
+                }
+                e.target.value = '';
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (historyIndex < terminalHistory.length - 1) {
+                    historyIndex++;
+                    e.target.value = terminalHistory[historyIndex];
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    e.target.value = terminalHistory[historyIndex];
+                } else if (historyIndex === 0) {
+                    historyIndex = -1;
+                    e.target.value = '';
+                }
+            }
+        });
+
+        async function executeCommand(command) {
+            const output = document.getElementById('terminalOutput');
+            
+            // Add command to output
+            output.textContent += `root@server:~$ ${command}\n`;
+            
+            try {
+                const response = await fetch('/api/terminal/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    output.textContent += result.output + '\n';
+                } else {
+                    output.textContent += `Error: ${result.error}\n`;
+                }
+            } catch (error) {
+                output.textContent += `Error: Command execution failed\n`;
+            }
+            
+            // Scroll to bottom
+            output.scrollTop = output.scrollHeight;
+        }
+
+        document.getElementById('closeTerminal').addEventListener('click', () => {
+            document.getElementById('terminalModal').style.display = 'none';
+        });
+
+        // File manager button
+        document.getElementById('fileManagerBtn').addEventListener('click', openFileManager);
+
+        // Existing dashboard functions (from original dashboard.html)
+        function renderDomains() {
+            const domainsList = document.getElementById('domainsList');
+            
+            if (!userData || userData.domains.length === 0) {
+                domainsList.innerHTML = '<p class="no-data">कोई डोमेन नहीं जोड़ा गया</p>';
+                return;
+            }
+            
+            domainsList.innerHTML = userData.domains.map(domain => `
+                <div class="domain-item">
+                    <div class="domain-info">
+                        <h3>${domain.domain}</h3>
+                        <span class="ssl-status ${domain.sslEnabled ? 'ssl-enabled' : 'ssl-disabled'}">
+                            ${domain.sslEnabled ? 'SSL सक्रिय' : 'SSL निष्क्रिय'}
+                        </span>
+                    </div>
+                    <div class="domain-actions">
+                        ${!domain.sslEnabled ? `<button onclick="enableSSL('${domain.domain}')" class="btn btn-small">SSL सक्रिय करें</button>` : ''}
+                        <button onclick="deleteDomain('${domain.domain}')" class="btn btn-danger btn-small">हटाएं</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Add domain
+        document.getElementById('addDomainBtn').addEventListener('click', async () => {
+            const domain = document.getElementById('domainInput').value.trim();
+            
+            if (!domain) {
+                showMessage('कृपया डोमेन नाम दर्ज करें', 'error');
+                return;
+            }
+            
+            if (userData.domains.length >= 2) {
+                showMessage('अधिकतम 2 डोमेन की अनुमति है', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/domains', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ domain })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('डोमेन सफलतापूर्वक जोड़ा गया', 'success');
+                    document.getElementById('domainInput').value = '';
+                    loadUserData();
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('डोमेन जोड़ने में त्रुटि', 'error');
+            }
+        });
+
+        // Delete domain
+        async function deleteDomain(domain) {
+            if (!confirm(`क्या आप वाकई ${domain} को हटाना चाहते हैं?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/domains/${encodeURIComponent(domain)}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('डोमेन सफलतापूर्वक हटाया गया', 'success');
+                    loadUserData();
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('डोमेन हटाने में त्रुटि', 'error');
+            }
+        }
+
+        // Enable SSL
+        async function enableSSL(domain) {
+            try {
+                const response = await fetch(`/api/ssl/${encodeURIComponent(domain)}`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('SSL सफलतापूर्वक सक्रिय किया गया', 'success');
+                    loadUserData();
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('SSL सक्रिय करने में त्रुटि', 'error');
+            }
+        }
+
+        // Upload files
+        document.getElementById('uploadBtn').addEventListener('click', async () => {
+            const fileInput = document.getElementById('fileInput');
+            const files = fileInput.files;
+            
+            if (files.length === 0) {
+                showMessage('कृपया फ़ाइलें चुनें', 'error');
+                return;
+            }
+            
+            const formData = new FormData();
+            for (let file of files) {
+                formData.append('htmlFiles', file);
+            }
+            
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('फ़ाइलें सफलतापूर्वक अपलोड हुईं', 'success');
+                    fileInput.value = '';
+                    loadFiles();
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('फ़ाइल अपलोड में त्रुटि', 'error');
+            }
+        });
+
+        // Load files
+        async function loadFiles() {
+            try {
+                const response = await fetch('/api/files');
+                const files = await response.json();
+                
+                const filesList = document.getElementById('filesList');
+                
+                if (files.length === 0) {
+                    filesList.innerHTML = '<p class="no-data">कोई फ़ाइल अपलोड नहीं की गई</p>';
+                    return;
+                }
+                
+                filesList.innerHTML = files.map(file => `
+                    <div class="file-item">
+                        <span class="file-name">${file}</span>
+                        <button onclick="deleteFile('${file}')" class="btn btn-danger btn-small">हटाएं</button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading files:', error);
+            }
+        }
+
+        // Delete file
+        async function deleteFile(filename) {
+            if (!confirm(`क्या आप वाकई ${filename} को हटाना चाहते हैं?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/files/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('फ़ाइल सफलतापूर्वक हटाई गई', 'success');
+                    loadFiles();
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('फ़ाइल हटाने में त्रुटि', 'error');
+            }
+        }
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.href = '/';
+            } catch (error) {
+                showMessage('लॉग आउट में त्रुटि', 'error');
+            }
+        });
+
+        // Show message
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="${type}">${text}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        // Auto-refresh system stats every 30 seconds
+        setInterval(loadSystemStats, 30000);
+
+        // Initialize dashboard
+        loadUserData();
+    </script>
+</body>
+</html>
