@@ -14,6 +14,33 @@ const util = require("util")
 const app = express()
 const execAsync = util.promisify(exec)
 
+// Add this after the imports and before mongoose connection
+const setupDirectories = async () => {
+  try {
+    const uploadsDir = path.join(__dirname, "uploads")
+
+    if (!fssync.existsSync(uploadsDir)) {
+      await fs.mkdir(uploadsDir, { recursive: true })
+      console.log("✅ Created uploads directory")
+    }
+
+    // Set proper permissions (if on Unix-like system)
+    if (process.platform !== "win32") {
+      try {
+        await fs.chmod(uploadsDir, 0o775)
+        console.log("✅ Set uploads directory permissions")
+      } catch (error) {
+        console.log("⚠️  Could not set directory permissions:", error.message)
+      }
+    }
+  } catch (error) {
+    console.error("❌ Error setting up directories:", error)
+  }
+}
+
+// Call setup function
+setupDirectories()
+
 // MongoDB connection with better error handling
 mongoose
   .connect(process.env.MONGO_URI || "mongodb://localhost:27017/domain-manager", {
@@ -517,17 +544,32 @@ app.put("/api/files/:filename", requireAuth, async (req, res) => {
   }
 })
 
+// Update the existing single file delete endpoint
 app.delete("/api/files/:filename", requireAuth, async (req, res) => {
   try {
     const filename = decodeURIComponent(req.params.filename)
 
+    // Security check
     if (filename.includes("..") || filename.includes("/") || filename.includes("\\")) {
       return res.status(400).json({ error: "Invalid filename" })
     }
 
-    const filePath = `uploads/${req.session.userId}/${filename}`
-    await fs.unlink(filePath)
+    const userDir = `uploads/${req.session.userId}`
+    const filePath = path.join(userDir, filename)
 
+    // Additional security check
+    const resolvedUserDir = path.resolve(userDir)
+    const resolvedFilePath = path.resolve(filePath)
+
+    if (!resolvedFilePath.startsWith(resolvedUserDir)) {
+      return res.status(400).json({ error: "Invalid path - security violation" })
+    }
+
+    if (!fssync.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found" })
+    }
+
+    await fs.unlink(filePath)
     console.log(`✅ File deleted: ${filename} for user ${req.session.userId}`)
     res.json({ success: true })
   } catch (error) {
@@ -541,12 +583,36 @@ app.delete("/api/files/:filename", requireAuth, async (req, res) => {
 // Get directory contents
 app.get("/api/files/browse", requireAuth, async (req, res) => {
   try {
-    const folderPath = req.query.path || ""
-    const userDir = `uploads/${req.session.userId}`
-    const fullPath = path.join(userDir, folderPath)
+    const { path: folderPath = "", rootPath = "user", sortBy = "name", sortOrder = "asc", search = "" } = req.query
 
-    // Security check
-    if (!fullPath.startsWith(userDir)) {
+    let basePath
+    switch (rootPath) {
+      case "system":
+        if (!isAdmin(req.session.userId)) {
+          return res.status(403).json({ error: "Admin access required for system files" })
+        }
+        basePath = "/"
+        break
+      case "home":
+        basePath = "/home"
+        break
+      case "var":
+        basePath = "/var"
+        break
+      case "etc":
+        basePath = "/etc"
+        break
+      case "tmp":
+        basePath = "/tmp"
+        break
+      default:
+        basePath = `uploads/${req.session.userId}`
+    }
+
+    const fullPath = path.join(basePath, folderPath)
+
+    // Security check for user files
+    if (rootPath === "user" && !fullPath.startsWith(`uploads/${req.session.userId}`)) {
       return res.status(400).json({ error: "Invalid path" })
     }
 
@@ -559,31 +625,69 @@ app.get("/api/files/browse", requireAuth, async (req, res) => {
     const folders = []
 
     for (const item of items) {
-      const itemPath = path.join(fullPath, item.name)
-      const stats = await fs.stat(itemPath)
+      try {
+        const itemPath = path.join(fullPath, item.name)
+        const stats = await fs.stat(itemPath)
+        const relativePath = path.join(folderPath, item.name).replace(/\\/g, "/")
 
-      if (item.isDirectory()) {
-        folders.push({
+        // Apply search filter
+        if (search && !item.name.toLowerCase().includes(search.toLowerCase())) {
+          continue
+        }
+
+        const itemData = {
           name: item.name,
-          type: "folder",
+          path: relativePath,
           modified: stats.mtime,
-          path: path.join(folderPath, item.name).replace(/\\/g, "/"),
-        })
-      } else {
-        files.push({
-          name: item.name,
-          type: "file",
-          size: stats.size,
-          modified: stats.mtime,
-          extension: path.extname(item.name).toLowerCase(),
-          path: path.join(folderPath, item.name).replace(/\\/g, "/"),
-        })
+          permissions: stats.mode.toString(8).slice(-3),
+        }
+
+        if (item.isDirectory()) {
+          folders.push({
+            ...itemData,
+            type: "folder",
+          })
+        } else {
+          files.push({
+            ...itemData,
+            type: "file",
+            size: stats.size,
+            extension: path.extname(item.name).toLowerCase(),
+          })
+        }
+      } catch (error) {
+        console.error(`Error processing item ${item.name}:`, error)
       }
     }
 
+    // Sort items
+    const sortFunction = (a, b) => {
+      let comparison = 0
+      switch (sortBy) {
+        case "name":
+          comparison = a.name.localeCompare(b.name)
+          break
+        case "modified":
+          comparison = new Date(a.modified) - new Date(b.modified)
+          break
+        case "size":
+          comparison = (a.size || 0) - (b.size || 0)
+          break
+        case "type":
+          comparison = (a.extension || "").localeCompare(b.extension || "")
+          break
+        default:
+          comparison = a.name.localeCompare(b.name)
+      }
+      return sortOrder === "desc" ? -comparison : comparison
+    }
+
+    folders.sort(sortFunction)
+    files.sort(sortFunction)
+
     res.json({
-      files: files.sort((a, b) => a.name.localeCompare(b.name)),
-      folders: folders.sort((a, b) => a.name.localeCompare(b.name)),
+      files,
+      folders,
       currentPath: folderPath,
     })
   } catch (error) {
@@ -592,170 +696,520 @@ app.get("/api/files/browse", requireAuth, async (req, res) => {
   }
 })
 
-// Create new folder
-app.post("/api/files/folder", requireAuth, async (req, res) => {
+// Get file content with system access
+app.get("/api/files/content", requireAuth, async (req, res) => {
   try {
-    const { folderName, currentPath = "" } = req.body
+    const { path: filePath, rootPath = "user" } = req.query
 
-    if (!folderName || folderName.includes("/") || folderName.includes("\\")) {
-      return res.status(400).json({ error: "Invalid folder name" })
+    let basePath
+    switch (rootPath) {
+      case "system":
+        if (!isAdmin(req.session.userId)) {
+          return res.status(403).json({ error: "Admin access required" })
+        }
+        basePath = "/"
+        break
+      case "home":
+        basePath = "/home"
+        break
+      case "var":
+        basePath = "/var"
+        break
+      case "etc":
+        basePath = "/etc"
+        break
+      case "tmp":
+        basePath = "/tmp"
+        break
+      default:
+        basePath = `uploads/${req.session.userId}`
     }
 
-    const userDir = `uploads/${req.session.userId}`
-    const folderPath = path.join(userDir, currentPath, folderName)
+    const fullPath = path.join(basePath, filePath)
 
-    if (fssync.existsSync(folderPath)) {
-      return res.status(400).json({ error: "Folder already exists" })
-    }
-
-    await fs.mkdir(folderPath, { recursive: true })
-
-    console.log(`✅ Folder created: ${folderName} for user ${req.session.userId}`)
-    res.json({ success: true })
-  } catch (error) {
-    console.error("Error creating folder:", error)
-    res.status(500).json({ error: "Failed to create folder" })
-  }
-})
-
-// Create new file
-app.post("/api/files/create", requireAuth, async (req, res) => {
-  try {
-    const { fileName, currentPath = "", content = "" } = req.body
-
-    if (!fileName || fileName.includes("/") || fileName.includes("\\")) {
-      return res.status(400).json({ error: "Invalid file name" })
-    }
-
-    const userDir = `uploads/${req.session.userId}`
-    const filePath = path.join(userDir, currentPath, fileName)
-
-    if (fssync.existsSync(filePath)) {
-      return res.status(400).json({ error: "File already exists" })
-    }
-
-    await fs.writeFile(filePath, content, "utf8")
-
-    console.log(`✅ File created: ${fileName} for user ${req.session.userId}`)
-    res.json({ success: true })
-  } catch (error) {
-    console.error("Error creating file:", error)
-    res.status(500).json({ error: "Failed to create file" })
-  }
-})
-
-// Rename file or folder
-app.put("/api/files/rename", requireAuth, async (req, res) => {
-  try {
-    const { oldPath, newName } = req.body
-
-    if (!oldPath || !newName || newName.includes("/") || newName.includes("\\")) {
-      return res.status(400).json({ error: "Invalid parameters" })
-    }
-
-    const userDir = `uploads/${req.session.userId}`
-    const oldFullPath = path.join(userDir, oldPath)
-    const newFullPath = path.join(path.dirname(oldFullPath), newName)
-
-    if (!fssync.existsSync(oldFullPath)) {
-      return res.status(404).json({ error: "File or folder not found" })
-    }
-
-    if (fssync.existsSync(newFullPath)) {
-      return res.status(400).json({ error: "Name already exists" })
-    }
-
-    await fs.rename(oldFullPath, newFullPath)
-
-    console.log(`✅ Renamed: ${oldPath} to ${newName} for user ${req.session.userId}`)
-    res.json({ success: true })
-  } catch (error) {
-    console.error("Error renaming:", error)
-    res.status(500).json({ error: "Failed to rename" })
-  }
-})
-
-// Delete file or folder
-app.delete("/api/files/delete", requireAuth, async (req, res) => {
-  try {
-    const { itemPath } = req.body
-
-    if (!itemPath) {
-      return res.status(400).json({ error: "Path is required" })
-    }
-
-    const userDir = `uploads/${req.session.userId}`
-    const fullPath = path.join(userDir, itemPath)
-
-    if (!fullPath.startsWith(userDir)) {
+    // Security check
+    if (rootPath === "user" && !fullPath.startsWith(`uploads/${req.session.userId}`)) {
       return res.status(400).json({ error: "Invalid path" })
     }
 
     if (!fssync.existsSync(fullPath)) {
-      return res.status(404).json({ error: "File or folder not found" })
+      return res.status(404).json({ error: "File not found" })
+    }
+
+    const content = await fs.readFile(fullPath, "utf8")
+    res.send(content)
+  } catch (error) {
+    console.error("Error reading file:", error)
+    res.status(500).json({ error: "Failed to read file" })
+  }
+})
+
+// Save file content
+app.put("/api/files/save", requireAuth, async (req, res) => {
+  try {
+    const { filePath, content, rootPath = "user" } = req.body
+
+    let basePath
+    switch (rootPath) {
+      case "system":
+        if (!isAdmin(req.session.userId)) {
+          return res.status(403).json({ error: "Admin access required" })
+        }
+        basePath = "/"
+        break
+      case "home":
+        basePath = "/home"
+        break
+      case "var":
+        basePath = "/var"
+        break
+      case "etc":
+        basePath = "/etc"
+        break
+      case "tmp":
+        basePath = "/tmp"
+        break
+      default:
+        basePath = `uploads/${req.session.userId}`
+    }
+
+    const fullPath = path.join(basePath, filePath)
+
+    // Security check
+    if (rootPath === "user" && !fullPath.startsWith(`uploads/${req.session.userId}`)) {
+      return res.status(400).json({ error: "Invalid path" })
+    }
+
+    await fs.writeFile(fullPath, content, "utf8")
+    console.log(`✅ File saved: ${filePath}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error("Error saving file:", error)
+    res.status(500).json({ error: "Failed to save file" })
+  }
+})
+
+// Download file
+app.get("/api/files/download", requireAuth, async (req, res) => {
+  try {
+    const { path: filePath, rootPath = "user" } = req.query
+
+    let basePath
+    switch (rootPath) {
+      case "system":
+        if (!isAdmin(req.session.userId)) {
+          return res.status(403).json({ error: "Admin access required" })
+        }
+        basePath = "/"
+        break
+      case "home":
+        basePath = "/home"
+        break
+      case "var":
+        basePath = "/var"
+        break
+      case "etc":
+        basePath = "/etc"
+        break
+      case "tmp":
+        basePath = "/tmp"
+        break
+      default:
+        basePath = `uploads/${req.session.userId}`
+    }
+
+    const fullPath = path.join(basePath, filePath)
+
+    // Security check
+    if (rootPath === "user" && !fullPath.startsWith(`uploads/${req.session.userId}`)) {
+      return res.status(400).json({ error: "Invalid path" })
+    }
+
+    if (!fssync.existsSync(fullPath)) {
+      return res.status(404).json({ error: "File not found" })
+    }
+
+    const fileName = path.basename(fullPath)
+    res.download(fullPath, fileName)
+  } catch (error) {
+    console.error("Error downloading file:", error)
+    res.status(500).json({ error: "Failed to download file" })
+  }
+})
+
+// Paste files (copy/cut operation)
+app.post("/api/files/paste", requireAuth, async (req, res) => {
+  try {
+    const { items, operation, targetPath, rootPath = "user" } = req.body
+
+    let basePath
+    switch (rootPath) {
+      case "system":
+        if (!isAdmin(req.session.userId)) {
+          return res.status(403).json({ error: "Admin access required" })
+        }
+        basePath = "/"
+        break
+      case "home":
+        basePath = "/home"
+        break
+      case "var":
+        basePath = "/var"
+        break
+      case "etc":
+        basePath = "/etc"
+        break
+      case "tmp":
+        basePath = "/tmp"
+        break
+      default:
+        basePath = `uploads/${req.session.userId}`
+    }
+
+    const targetDir = path.join(basePath, targetPath)
+
+    for (const itemPath of items) {
+      const sourcePath = path.join(basePath, itemPath)
+      const itemName = path.basename(itemPath)
+      const destPath = path.join(targetDir, itemName)
+
+      if (operation === "copy") {
+        await fs.copyFile(sourcePath, destPath)
+      } else if (operation === "cut") {
+        await fs.rename(sourcePath, destPath)
+      }
+    }
+
+    console.log(`✅ ${operation} operation completed for ${items.length} items`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error("Error in paste operation:", error)
+    res.status(500).json({ error: "Failed to paste items" })
+  }
+})
+
+// Delete multiple items
+app.delete("/api/files/delete-multiple", requireAuth, async (req, res) => {
+  try {
+    const { itemPaths, rootPath = "user" } = req.body
+
+    let basePath
+    switch (rootPath) {
+      case "system":
+        if (!isAdmin(req.session.userId)) {
+          return res.status(403).json({ error: "Admin access required" })
+        }
+        basePath = "/"
+        break
+      case "home":
+        basePath = "/home"
+        break
+      case "var":
+        basePath = "/var"
+        break
+      case "etc":
+        basePath = "/etc"
+        break
+      case "tmp":
+        basePath = "/tmp"
+        break
+      default:
+        basePath = `uploads/${req.session.userId}`
+    }
+
+    for (const itemPath of itemPaths) {
+      const fullPath = path.join(basePath, itemPath)
+
+      if (fssync.existsSync(fullPath)) {
+        const stats = await fs.stat(fullPath)
+        if (stats.isDirectory()) {
+          await fs.rmdir(fullPath, { recursive: true })
+        } else {
+          await fs.unlink(fullPath)
+        }
+      }
+    }
+
+    console.log(`✅ Deleted ${itemPaths.length} items`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error("Error deleting multiple items:", error)
+    res.status(500).json({ error: "Failed to delete items" })
+  }
+})
+
+// Compress item
+app.post("/api/files/compress", requireAuth, async (req, res) => {
+  try {
+    const { itemPath, rootPath = "user" } = req.body
+
+    let basePath
+    switch (rootPath) {
+      case "system":
+        if (!isAdmin(req.session.userId)) {
+          return res.status(403).json({ error: "Admin access required" })
+        }
+        basePath = "/"
+        break
+      default:
+        basePath = `uploads/${req.session.userId}`
+    }
+
+    const fullPath = path.join(basePath, itemPath)
+    const zipPath = fullPath + ".zip"
+
+    // Use system zip command
+    await execAsync(`cd "${path.dirname(fullPath)}" && zip -r "${zipPath}" "${path.basename(fullPath)}"`)
+
+    console.log(`✅ Compressed: ${itemPath}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error("Error compressing item:", error)
+    res.status(500).json({ error: "Failed to compress item" })
+  }
+})
+
+// Get file properties
+app.get("/api/files/properties", requireAuth, async (req, res) => {
+  try {
+    const { path: filePath, rootPath = "user" } = req.query
+
+    let basePath
+    switch (rootPath) {
+      case "system":
+        if (!isAdmin(req.session.userId)) {
+          return res.status(403).json({ error: "Admin access required" })
+        }
+        basePath = "/"
+        break
+      default:
+        basePath = `uploads/${req.session.userId}`
+    }
+
+    const fullPath = path.join(basePath, filePath)
+
+    if (!fssync.existsSync(fullPath)) {
+      return res.status(404).json({ error: "File not found" })
     }
 
     const stats = await fs.stat(fullPath)
 
-    if (stats.isDirectory()) {
-      await fs.rmdir(fullPath, { recursive: true })
-    } else {
-      await fs.unlink(fullPath)
-    }
-
-    console.log(`✅ Deleted: ${itemPath} for user ${req.session.userId}`)
-    res.json({ success: true })
-  } catch (error) {
-    console.error("Error deleting:", error)
-    res.status(500).json({ error: "Failed to delete" })
-  }
-})
-
-// Update file upload to handle folders and all file types
-app.post("/api/upload", requireAuth, async (req, res) => {
-  try {
-    const user = await User.findById(req.session.userId)
-    const fileLimit = (user.fileLimit || 100) * 1024 * 1024
-
-    const dynamicUpload = multer({
-      storage,
-      fileFilter: (req, file, cb) => {
-        // Accept all file types
-        cb(null, true)
+    res.json({
+      success: true,
+      data: {
+        name: path.basename(fullPath),
+        path: fullPath,
+        size: stats.size,
+        isDirectory: stats.isDirectory(),
+        mode: stats.mode.toString(8),
+        mtime: stats.mtime,
+        birthtime: stats.birthtime,
       },
-      limits: { fileSize: fileLimit },
-    }).array("files")
-
-    dynamicUpload(req, res, (err) => {
-      if (err) {
-        if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-          return res.status(400).json({
-            error: `File size exceeds ${user.fileLimit || 100}MB limit`,
-          })
-        }
-        return res.status(400).json({ error: err.message })
-      }
-
-      if (!req.files || req.files.length === 0) {
-        return res.status(400).json({ error: "No files uploaded" })
-      }
-
-      console.log(`✅ Files uploaded for user ${user.username}: ${req.files.map((f) => f.filename).join(", ")}`)
-
-      res.json({
-        success: true,
-        files: req.files.map((file) => ({
-          filename: file.filename,
-          size: file.size,
-          path: file.path,
-        })),
-      })
     })
   } catch (error) {
-    console.error("Upload error:", error)
-    res.status(500).json({ error: "Upload failed" })
+    console.error("Error getting properties:", error)
+    res.status(500).json({ error: "Failed to get properties" })
   }
 })
+
+// Get file permissions
+app.get("/api/files/permissions", requireAuth, async (req, res) => {
+  try {
+    const { path: filePath, rootPath = "user" } = req.query
+
+    if (!isAdmin(req.session.userId)) {
+      return res.status(403).json({ error: "Admin access required" })
+    }
+
+    let basePath
+    switch (rootPath) {
+      case "system":
+        basePath = "/"
+        break
+      default:
+        basePath = `uploads/${req.session.userId}`
+    }
+
+    const fullPath = path.join(basePath, filePath)
+    const stats = await fs.stat(fullPath)
+    const mode = stats.mode
+
+    res.json({
+      success: true,
+      data: {
+        octal: mode.toString(8).slice(-3),
+        owner: {
+          read: !!(mode & 0o400),
+          write: !!(mode & 0o200),
+          execute: !!(mode & 0o100),
+        },
+        group: {
+          read: !!(mode & 0o040),
+          write: !!(mode & 0o020),
+          execute: !!(mode & 0o010),
+        },
+        others: {
+          read: !!(mode & 0o004),
+          write: !!(mode & 0o002),
+          execute: !!(mode & 0o001),
+        },
+      },
+    })
+  } catch (error) {
+    console.error("Error getting permissions:", error)
+    res.status(500).json({ error: "Failed to get permissions" })
+  }
+})
+
+// Terminal command execution
+app.post("/api/terminal/execute", requireAuth, async (req, res) => {
+  try {
+    const { command, currentPath = "", rootPath = "user" } = req.body
+
+    if (!isAdmin(req.session.userId) && rootPath !== "user") {
+      return res.status(403).json({ error: "Admin access required for system commands" })
+    }
+
+    let basePath
+    switch (rootPath) {
+      case "system":
+        basePath = "/"
+        break
+      case "home":
+        basePath = "/home"
+        break
+      case "var":
+        basePath = "/var"
+        break
+      case "etc":
+        basePath = "/etc"
+        break
+      case "tmp":
+        basePath = "/tmp"
+        break
+      default:
+        basePath = `uploads/${req.session.userId}`
+    }
+
+    const workingDir = path.join(basePath, currentPath)
+
+    // Security: Block dangerous commands
+    const dangerousCommands = ["rm -rf /", "dd if=", "mkfs", "fdisk", "format"]
+    if (dangerousCommands.some((cmd) => command.includes(cmd))) {
+      return res.json({ success: false, error: "Command blocked for security reasons" })
+    }
+
+    const { stdout, stderr } = await execAsync(command, {
+      cwd: workingDir,
+      timeout: 30000, // 30 second timeout
+    })
+
+    res.json({
+      success: true,
+      output: stdout || stderr,
+      newPath: currentPath, // Could be updated based on cd commands
+    })
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message || "Command execution failed",
+    })
+  }
+})
+
+// System stats
+app.get("/api/system/stats", requireAuth, async (req, res) => {
+  try {
+    if (!isAdmin(req.session.userId)) {
+      return res.status(403).json({ error: "Admin access required" })
+    }
+
+    // Get system information
+    const [memInfo, cpuInfo, diskInfo] = await Promise.all([
+      execAsync("free -m").catch(() => ({ stdout: "" })),
+      execAsync("top -bn1 | grep 'Cpu(s)'").catch(() => ({ stdout: "" })),
+      execAsync("df -h /").catch(() => ({ stdout: "" })),
+    ])
+
+    // Parse memory info
+    const memLines = memInfo.stdout.split("\n")
+    const memData = memLines[1]?.split(/\s+/) || []
+    const totalMem = Number.parseInt(memData[1]) || 0
+    const usedMem = Number.parseInt(memData[2]) || 0
+    const memUsedPercent = totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0
+
+    // Parse CPU info
+    const cpuMatch = cpuInfo.stdout.match(/(\d+\.\d+)%?\s*us/)
+    const cpuUsage = cpuMatch ? Number.parseFloat(cpuMatch[1]) : 0
+
+    // Parse disk info
+    const diskLines = diskInfo.stdout.split("\n")
+    const diskData = diskLines[1]?.split(/\s+/) || []
+    const diskUsedPercent = diskData[4] ? Number.parseInt(diskData[4].replace("%", "")) : 0
+
+    res.json({
+      success: true,
+      data: {
+        memory: {
+          total: totalMem * 1024 * 1024,
+          used: memUsedPercent,
+        },
+        cpu: {
+          usage: cpuUsage,
+          cores: require("os").cpus().length,
+          model: require("os").cpus()[0]?.model || "Unknown",
+        },
+        disk: {
+          used: diskUsedPercent,
+        },
+        uptime: require("os").uptime(),
+        os: {
+          platform: require("os").platform(),
+          release: require("os").release(),
+        },
+      },
+    })
+  } catch (error) {
+    console.error("Error getting system stats:", error)
+    res.status(500).json({ error: "Failed to get system stats" })
+  }
+})
+
+// System info
+app.get("/api/system/info", requireAuth, async (req, res) => {
+  try {
+    if (!isAdmin(req.session.userId)) {
+      return res.status(403).json({ error: "Admin access required" })
+    }
+
+    const os = require("os")
+
+    res.json({
+      success: true,
+      data: {
+        hostname: os.hostname(),
+        platform: os.platform(),
+        arch: os.arch(),
+        release: os.release(),
+        uptime: os.uptime(),
+        loadavg: os.loadavg(),
+        totalmem: os.totalmem(),
+        freemem: os.freemem(),
+        cpus: os.cpus(),
+      },
+    })
+  } catch (error) {
+    console.error("Error getting system info:", error)
+    res.status(500).json({ error: "Failed to get system info" })
+  }
+})
+
+// Helper function to check if user is admin
+function isAdmin(userId) {
+  // You can implement your admin check logic here
+  // For now, we'll check if user exists and has admin role
+  return true // Simplified for demo
+}
 
 // Admin routes (same as before but with enhanced logging)
 app.get("/api/admin/users", async (req, res) => {
@@ -782,6 +1236,42 @@ app.get("/api/admin/users", async (req, res) => {
   } catch (error) {
     console.error("Error fetching users:", error)
     res.status(500).json({ error: "Failed to fetch users" })
+  }
+})
+
+// Admin delete user file - FIXED VERSION
+app.delete("/api/admin/files/:userId/:filename", async (req, res) => {
+  try {
+    const { userId, filename } = req.params
+    const decodedFilename = decodeURIComponent(filename)
+
+    // Security check
+    if (decodedFilename.includes("..") || decodedFilename.includes("\\")) {
+      return res.status(400).json({ error: "Invalid filename" })
+    }
+
+    const userDir = `uploads/${userId}`
+    const filePath = path.join(userDir, decodedFilename)
+
+    // Security check - ensure path is within user directory
+    const resolvedUserDir = path.resolve(userDir)
+    const resolvedFilePath = path.resolve(filePath)
+
+    if (!resolvedFilePath.startsWith(resolvedUserDir)) {
+      return res.status(400).json({ error: "Invalid path - security violation" })
+    }
+
+    if (!fssync.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found" })
+    }
+
+    await fs.unlink(filePath)
+    console.log(`✅ Admin deleted file: ${decodedFilename} for user ${userId}`)
+
+    res.json({ success: true })
+  } catch (error) {
+    console.error("Error deleting user file:", error)
+    res.status(500).json({ error: "Failed to delete file" })
   }
 })
 
