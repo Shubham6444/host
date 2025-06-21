@@ -20,7 +20,13 @@
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
-  "keywords": ["domain", "management", "nginx", "ssl", "file-upload"],
+  "keywords": [
+    "domain",
+    "management",
+    "nginx",
+    "ssl",
+    "file-upload"
+  ],
   "author": "Domain Manager",
   "license": "MIT"
 }
