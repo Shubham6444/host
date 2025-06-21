@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Domain Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>Domain Manager</h2>
+                <button class="sidebar-toggle" id="sidebarToggle">☰</button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#domains" class="nav-item active" data-section="domains">
+                    <span class="nav-icon">🌐</span>
+                    <span class="nav-text">Domains</span>
+                </a>
+                <a href="#files" class="nav-item" data-section="files">
+                    <span class="nav-icon">📁</span>
+                    <span class="nav-text">Files</span>
+                </a>
+                <a href="#nginx" class="nav-item" data-section="nginx">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Nginx Status</span>
+                </a>
+                <a href="#settings" class="nav-item" data-section="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <span id="welcomeUser"></span>
+                </div>
+                <button id="logoutBtn" class="btn btn-secondary btn-small">Logout</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="content-header">
+                <h1 id="sectionTitle">Domain Management</h1>
+                <div class="processing-indicator" id="processingIndicator">
+                    <div class="spinner"></div>
+                    <span>Processing...</span>
+                </div>
+            </div>
+
+            <!-- Domain Management Section -->
+            <section id="domains-section" class="content-section active">
+                <div class="section-card">
+                    <h3>Add New Domain</h3>
+                    <div class="domain-form">
+                        <input type="text" id="domainInput" placeholder="example.com" maxlength="100">
+                        <button id="addDomainBtn" class="btn btn-primary">Add Domain</button>
+                    </div>
+                </div>
+                
+                <div class="section-card">
+                    <h3>Your Domains</h3>
+                    <div id="domainsList" class="domains-list"></div>
+                </div>
+            </section>
+
+            <!-- File Upload Section -->
+            <section id="files-section" class="content-section">
+                <div class="section-card">
+                    <h3>Upload HTML Files</h3>
+                    <div class="upload-form">
+                        <div class="file-upload-area" id="fileUploadArea">
+                            <input type="file" id="fileInput" multiple accept=".html" class="file-input">
+                            <div class="upload-text">
+                                <p>Drag & drop files here or click to browse</p>
+                                <p class="upload-limit">Maximum file size: <span id="maxFileSize">50MB</span></p>
+                            </div>
+                        </div>
+                        <button id="uploadBtn" class="btn btn-primary">Upload Files</button>
+                    </div>
+                </div>
+                
+                <div class="section-card">
+                    <h3>Your Files</h3>
+                    <div id="filesList" class="files-list"></div>
+                </div>
+            </section>
+
+            <!-- Nginx Configuration Section -->
+            <section id="nginx-section" class="content-section">
+                <div class="section-card">
+                    <h3>Nginx Configuration Status</h3>
+                    <div id="nginxStatus" class="nginx-status">
+                        <p>Configuration automatically updates when you add or remove domains.</p>
+                        <div class="status-indicator">
+                            <span class="status-dot active"></span>
+                            <span>Nginx Running</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings Section -->
+            <section id="settings-section" class="content-section">
+                <div class="section-card">
+                    <h3>Account Settings</h3>
+                    <div class="settings-info">
+                        <p><strong>Username:</strong> <span id="settingsUsername"></span></p>
+                        <p><strong>Email:</strong> <span id="settingsEmail"></span></p>
+                        <p><strong>Domains Used:</strong> <span id="domainsCount">0</span>/2</p>
+                        <p><strong>File Upload Limit:</strong> <span id="userFileLimit">50MB</span></p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <div id="message" class="message"></div>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>

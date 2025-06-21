@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Domain Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>Admin Panel</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#users" class="nav-item active" data-section="users">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-text">Users</span>
+                </a>
+                <a href="#files" class="nav-item" data-section="files">
+                    <span class="nav-icon">📁</span>
+                    <span class="nav-text">All Files</span>
+                </a>
+                <a href="#domains" class="nav-item" data-section="domains">
+                    <span class="nav-icon">🌐</span>
+                    <span class="nav-text">All Domains</span>
+                </a>
+                <a href="#system" class="nav-item" data-section="system">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">System</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <div class="content-header">
+                <h1 id="sectionTitle">User Management</h1>
+                <div class="admin-stats">
+                    <div class="stat-card">
+                        <span class="stat-number" id="totalUsers">0</span>
+                        <span class="stat-label">Total Users</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-number" id="totalDomains">0</span>
+                        <span class="stat-label">Total Domains</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-number" id="totalFiles">0</span>
+                        <span class="stat-label">Total Files</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Section -->
+            <section id="users-section" class="content-section active">
+                <div class="section-card">
+                    <h3>All Users</h3>
+                    <div class="table-container">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Domains</th>
+                                    <th>Files</th>
+                                    <th>File Limit</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Files Section -->
+            <section id="files-section" class="content-section">
+                <div class="section-card">
+                    <h3>All User Files</h3>
+                    <div id="allFilesList" class="files-list"></div>
+                </div>
+            </section>
+
+            <!-- Domains Section -->
+            <section id="domains-section" class="content-section">
+                <div class="section-card">
+                    <h3>All Domains</h3>
+                    <div id="allDomainsList" class="domains-list"></div>
+                </div>
+            </section>
+
+            <!-- System Section -->
+            <section id="system-section" class="content-section">
+                <div class="section-card">
+                    <h3>System Status</h3>
+                    <div class="system-info">
+                        <div class="status-item">
+                            <span class="status-dot active"></span>
+                            <span>Server Running</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-dot active"></span>
+                            <span>Database Connected</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-dot active"></span>
+                            <span>Nginx Running</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section-card">
+                    <h3>Global Settings</h3>
+                    <div class="form-group">
+                        <label for="defaultFileLimit">Default File Upload Limit (MB)</label>
+                        <input type="number" id="defaultFileLimit" value="50" min="1" max="500">
+                        <button class="btn btn-primary" onclick="updateGlobalSettings()">Update</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- User Edit Modal -->
+        <div id="userModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Edit User</h3>
+                    <button class="modal-close" onclick="closeUserModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="userEditForm">
+                        <input type="hidden" id="editUserId">
+                        <div class="form-group">
+                            <label for="editUsername">Username</label>
+                            <input type="text" id="editUsername" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="editEmail">Email</label>
+                            <input type="email" id="editEmail" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="editFileLimit">File Upload Limit (MB)</label>
+                            <input type="number" id="editFileLimit" min="1" max="500" required>
+                        </div>
+                        <div class="modal-actions">
+                            <button type="button" class="btn btn-secondary" onclick="closeUserModal()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div id="message" class="message"></div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>
