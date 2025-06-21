@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Domain Manager</title>
     <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
 </head>
+
 <body>
     <div class="dashboard-container">
         <aside class="sidebar" id="sidebar">
@@ -19,9 +22,9 @@
                     <span class="nav-icon">🌐</span>
                     <span class="nav-text">Domains</span>
                 </a>
-                <a href="#files" class="nav-item" data-section="files">
+                <a href="#filemanager" class="nav-item" data-section="filemanager">
                     <span class="nav-icon">📁</span>
-                    <span class="nav-text">Files</span>
+                    <span class="nav-text">File Manager</span>
                 </a>
                 <a href="#editor" class="nav-item" data-section="editor">
                     <span class="nav-icon">✏️</span>
@@ -62,32 +65,62 @@
                         <button id="addDomainBtn" class="btn btn-primary">Add Domain</button>
                     </div>
                 </div>
-                
+
                 <div class="section-card">
                     <h3>Your Domains</h3>
                     <div id="domainsList" class="domains-list"></div>
                 </div>
             </section>
 
-            <!-- File Upload Section -->
-            <section id="files-section" class="content-section">
+            <!-- File Manager Section -->
+            <section id="filemanager-section" class="content-section">
                 <div class="section-card">
-                    <h3>Upload HTML Files</h3>
-                    <div class="upload-form">
-                        <div class="file-upload-area" id="fileUploadArea">
-                            <input type="file" id="fileInput" multiple accept=".html" class="file-input">
-                            <div class="upload-text">
-                                <p>Drag & drop files here or click to browse</p>
-                                <p class="upload-limit">Maximum file size: <span id="maxFileSize">50MB</span></p>
+                    <div class="file-manager-header">
+                        <h3>File Manager</h3>
+                        <div class="file-manager-actions">
+                            <button id="uploadFilesBtn" class="btn btn-primary btn-small">📤 Upload Files</button>
+                            <button id="createFolderBtn" class="btn btn-secondary btn-small">📁 New Folder</button>
+                            <button id="createFileBtn" class="btn btn-success btn-small">📄 New File</button>
+                        </div>
+                    </div>
+
+                    <!-- Breadcrumb Navigation -->
+                    <div class="breadcrumb" id="breadcrumb">
+                        <span class="breadcrumb-item active" data-path="">🏠 Home</span>
+                    </div>
+
+                    <!-- File Upload Area -->
+                    <div class="file-upload-area" id="fileUploadArea" style="display: none;">
+                        <input type="file" id="fileInput" multiple class="file-input">
+                        <div class="upload-text">
+                            <p>Drag & drop files or folders here or click to browse</p>
+                            <p class="upload-limit">Maximum file size: <span id="maxFileSize">100MB</span></p>
+                        </div>
+                        <div class="upload-actions">
+                            <button id="uploadBtn" class="btn btn-primary">Upload Files</button>
+                            <button id="cancelUploadBtn" class="btn btn-secondary">Cancel</button>
+                        </div>
+                    </div>
+
+                    <!-- File Manager Content -->
+                    <div class="file-manager-content">
+                        <div class="file-manager-toolbar">
+                            <div class="view-options">
+                                <button class="view-btn active" data-view="grid">⊞ Grid</button>
+                                <button class="view-btn" data-view="list">☰ List</button>
+                            </div>
+                            <div class="sort-options">
+                                <select id="sortBy">
+                                    <option value="name">Sort by Name</option>
+                                    <option value="modified">Sort by Date</option>
+                                    <option value="size">Sort by Size</option>
+                                    <option value="type">Sort by Type</option>
+                                </select>
                             </div>
                         </div>
-                        <button id="uploadBtn" class="btn btn-primary">Upload Files</button>
+
+                        <div id="fileManagerGrid" class="file-grid"></div>
                     </div>
-                </div>
-                
-                <div class="section-card">
-                    <h3>Your Files</h3>
-                    <div id="filesList" class="files-list"></div>
                 </div>
             </section>
 
@@ -99,16 +132,18 @@
                         <div class="editor-header">
                             <span class="editor-title" id="editorTitle">No file selected</span>
                             <div class="editor-actions">
-                                <button id="saveFileBtn" class="btn btn-success btn-small">Save</button>
-                                <button id="closeEditorBtn" class="btn btn-secondary btn-small">Close</button>
+                                <button id="saveFileBtn" class="btn btn-success btn-small">💾 Save</button>
+                                <button id="saveAsBtn" class="btn btn-info btn-small">💾 Save As</button>
+                                <button id="closeEditorBtn" class="btn btn-secondary btn-small">✖️ Close</button>
                             </div>
                         </div>
                         <div class="editor-content">
-                            <textarea id="codeEditor" class="code-editor" placeholder="Select a file to edit..."></textarea>
+                            <textarea id="codeEditor" class="code-editor"
+                                placeholder="Select a file to edit..."></textarea>
                         </div>
                     </div>
                     <div id="editorPlaceholder" class="no-data">
-                        Select a file from the Files section to start editing
+                        Select a file from the File Manager to start editing
                     </div>
                 </div>
             </section>
@@ -139,16 +174,70 @@
                         <p><strong>Username:</strong> <span id="settingsUsername">Loading...</span></p>
                         <p><strong>Email:</strong> <span id="settingsEmail">Loading...</span></p>
                         <p><strong>Domains Used:</strong> <span id="domainsCount">0</span>/2</p>
-                        <p><strong>File Upload Limit:</strong> <span id="userFileLimit">50MB</span></p>
+                        <p><strong>File Upload Limit:</strong> <span id="userFileLimit">100MB</span></p>
                         <p><strong>Account Created:</strong> <span id="accountCreated">Loading...</span></p>
                     </div>
                 </div>
             </section>
         </main>
 
+        <!-- Context Menu -->
+        <div id="contextMenu" class="context-menu">
+            <div class="context-item" data-action="open">📂 Open</div>
+            <div class="context-item" data-action="edit">✏️ Edit</div>
+            <div class="context-item" data-action="rename">✏️ Rename</div>
+            <div class="context-item" data-action="delete">🗑️ Delete</div>
+            <div class="context-separator"></div>
+            <div class="context-item" data-action="download">⬇️ Download</div>
+        </div>
+
+        <!-- Modals -->
+        <div id="createModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="createModalTitle">Create New</h3>
+                    <button class="modal-close" onclick="closeCreateModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="createForm">
+                        <div class="form-group">
+                            <label for="itemName" id="itemNameLabel">Name</label>
+                            <input type="text" id="itemName" required>
+                        </div>
+                        <div class="modal-actions">
+                            <button type="button" class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Create</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div id="renameModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Rename Item</h3>
+                    <button class="modal-close" onclick="closeRenameModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="renameForm">
+                        <div class="form-group">
+                            <label for="newItemName">New Name</label>
+                            <input type="text" id="newItemName" required>
+                        </div>
+                        <div class="modal-actions">
+                            <button type="button" class="btn btn-secondary" onclick="closeRenameModal()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Rename</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <div id="message" class="message"></div>
     </div>
 
     <script src="dashboard.js"></script>
 </body>
+
 </html>

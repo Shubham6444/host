@@ -77,19 +77,23 @@ app.use(
   }),
 )
 
-// Enhanced multer configuration
+// Update multer configuration to accept all file types and handle folders
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
     const userDir = `uploads/${req.session.userId}`
+    const folderPath = req.body.folderPath || ""
+    const fullPath = path.join(userDir, folderPath)
+
     try {
-      await fs.mkdir(userDir, { recursive: true })
-      cb(null, userDir)
+      await fs.mkdir(fullPath, { recursive: true })
+      cb(null, fullPath)
     } catch (error) {
       cb(error)
     }
   },
   filename: (req, file, cb) => {
-    const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")
+    // Preserve original filename with proper sanitization
+    const sanitizedName = file.originalname.replace(/[<>:"/\\|?*]/g, "_")
     cb(null, sanitizedName)
   },
 })
@@ -97,14 +101,11 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === "text/html" || path.extname(file.originalname).toLowerCase() === ".html") {
-      cb(null, true)
-    } else {
-      cb(new Error("Only HTML files are allowed"), false)
-    }
+    // Accept all file types
+    cb(null, true)
   },
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB default
+    fileSize: 100 * 1024 * 1024, // 100MB limit
   },
 })
 
@@ -445,54 +446,6 @@ app.post("/api/ssl/:domain", requireAuth, async (req, res) => {
 })
 
 // File management routes
-app.post("/api/upload", requireAuth, async (req, res) => {
-  try {
-    const user = await User.findById(req.session.userId)
-    const fileLimit = (user.fileLimit || 50) * 1024 * 1024
-
-    const dynamicUpload = multer({
-      storage,
-      fileFilter: (req, file, cb) => {
-        if (file.mimetype === "text/html" || path.extname(file.originalname).toLowerCase() === ".html") {
-          cb(null, true)
-        } else {
-          cb(new Error("Only HTML files are allowed"), false)
-        }
-      },
-      limits: { fileSize: fileLimit },
-    }).array("htmlFiles")
-
-    dynamicUpload(req, res, (err) => {
-      if (err) {
-        if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-          return res.status(400).json({
-            error: `File size exceeds ${user.fileLimit || 50}MB limit`,
-          })
-        }
-        return res.status(400).json({ error: err.message })
-      }
-
-      if (!req.files || req.files.length === 0) {
-        return res.status(400).json({ error: "No files uploaded" })
-      }
-
-      console.log(`✅ Files uploaded for user ${user.username}: ${req.files.map((f) => f.filename).join(", ")}`)
-
-      res.json({
-        success: true,
-        files: req.files.map((file) => ({
-          filename: file.filename,
-          size: file.size,
-          path: file.path,
-        })),
-      })
-    })
-  } catch (error) {
-    console.error("Upload error:", error)
-    res.status(500).json({ error: "Upload failed" })
-  }
-})
-
 app.get("/api/files", requireAuth, async (req, res) => {
   try {
     const userDir = `uploads/${req.session.userId}`
@@ -580,6 +533,227 @@ app.delete("/api/files/:filename", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Error deleting file:", error)
     res.status(500).json({ error: "Failed to delete file" })
+  }
+})
+
+// Add new file manager routes after the existing file routes
+
+// Get directory contents
+app.get("/api/files/browse", requireAuth, async (req, res) => {
+  try {
+    const folderPath = req.query.path || ""
+    const userDir = `uploads/${req.session.userId}`
+    const fullPath = path.join(userDir, folderPath)
+
+    // Security check
+    if (!fullPath.startsWith(userDir)) {
+      return res.status(400).json({ error: "Invalid path" })
+    }
+
+    if (!fssync.existsSync(fullPath)) {
+      return res.json({ files: [], folders: [], currentPath: folderPath })
+    }
+
+    const items = await fs.readdir(fullPath, { withFileTypes: true })
+    const files = []
+    const folders = []
+
+    for (const item of items) {
+      const itemPath = path.join(fullPath, item.name)
+      const stats = await fs.stat(itemPath)
+
+      if (item.isDirectory()) {
+        folders.push({
+          name: item.name,
+          type: "folder",
+          modified: stats.mtime,
+          path: path.join(folderPath, item.name).replace(/\\/g, "/"),
+        })
+      } else {
+        files.push({
+          name: item.name,
+          type: "file",
+          size: stats.size,
+          modified: stats.mtime,
+          extension: path.extname(item.name).toLowerCase(),
+          path: path.join(folderPath, item.name).replace(/\\/g, "/"),
+        })
+      }
+    }
+
+    res.json({
+      files: files.sort((a, b) => a.name.localeCompare(b.name)),
+      folders: folders.sort((a, b) => a.name.localeCompare(b.name)),
+      currentPath: folderPath,
+    })
+  } catch (error) {
+    console.error("Error browsing files:", error)
+    res.status(500).json({ error: "Failed to browse files" })
+  }
+})
+
+// Create new folder
+app.post("/api/files/folder", requireAuth, async (req, res) => {
+  try {
+    const { folderName, currentPath = "" } = req.body
+
+    if (!folderName || folderName.includes("/") || folderName.includes("\\")) {
+      return res.status(400).json({ error: "Invalid folder name" })
+    }
+
+    const userDir = `uploads/${req.session.userId}`
+    const folderPath = path.join(userDir, currentPath, folderName)
+
+    if (fssync.existsSync(folderPath)) {
+      return res.status(400).json({ error: "Folder already exists" })
+    }
+
+    await fs.mkdir(folderPath, { recursive: true })
+
+    console.log(`✅ Folder created: ${folderName} for user ${req.session.userId}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error("Error creating folder:", error)
+    res.status(500).json({ error: "Failed to create folder" })
+  }
+})
+
+// Create new file
+app.post("/api/files/create", requireAuth, async (req, res) => {
+  try {
+    const { fileName, currentPath = "", content = "" } = req.body
+
+    if (!fileName || fileName.includes("/") || fileName.includes("\\")) {
+      return res.status(400).json({ error: "Invalid file name" })
+    }
+
+    const userDir = `uploads/${req.session.userId}`
+    const filePath = path.join(userDir, currentPath, fileName)
+
+    if (fssync.existsSync(filePath)) {
+      return res.status(400).json({ error: "File already exists" })
+    }
+
+    await fs.writeFile(filePath, content, "utf8")
+
+    console.log(`✅ File created: ${fileName} for user ${req.session.userId}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error("Error creating file:", error)
+    res.status(500).json({ error: "Failed to create file" })
+  }
+})
+
+// Rename file or folder
+app.put("/api/files/rename", requireAuth, async (req, res) => {
+  try {
+    const { oldPath, newName } = req.body
+
+    if (!oldPath || !newName || newName.includes("/") || newName.includes("\\")) {
+      return res.status(400).json({ error: "Invalid parameters" })
+    }
+
+    const userDir = `uploads/${req.session.userId}`
+    const oldFullPath = path.join(userDir, oldPath)
+    const newFullPath = path.join(path.dirname(oldFullPath), newName)
+
+    if (!fssync.existsSync(oldFullPath)) {
+      return res.status(404).json({ error: "File or folder not found" })
+    }
+
+    if (fssync.existsSync(newFullPath)) {
+      return res.status(400).json({ error: "Name already exists" })
+    }
+
+    await fs.rename(oldFullPath, newFullPath)
+
+    console.log(`✅ Renamed: ${oldPath} to ${newName} for user ${req.session.userId}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error("Error renaming:", error)
+    res.status(500).json({ error: "Failed to rename" })
+  }
+})
+
+// Delete file or folder
+app.delete("/api/files/delete", requireAuth, async (req, res) => {
+  try {
+    const { itemPath } = req.body
+
+    if (!itemPath) {
+      return res.status(400).json({ error: "Path is required" })
+    }
+
+    const userDir = `uploads/${req.session.userId}`
+    const fullPath = path.join(userDir, itemPath)
+
+    if (!fullPath.startsWith(userDir)) {
+      return res.status(400).json({ error: "Invalid path" })
+    }
+
+    if (!fssync.existsSync(fullPath)) {
+      return res.status(404).json({ error: "File or folder not found" })
+    }
+
+    const stats = await fs.stat(fullPath)
+
+    if (stats.isDirectory()) {
+      await fs.rmdir(fullPath, { recursive: true })
+    } else {
+      await fs.unlink(fullPath)
+    }
+
+    console.log(`✅ Deleted: ${itemPath} for user ${req.session.userId}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error("Error deleting:", error)
+    res.status(500).json({ error: "Failed to delete" })
+  }
+})
+
+// Update file upload to handle folders and all file types
+app.post("/api/upload", requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.session.userId)
+    const fileLimit = (user.fileLimit || 100) * 1024 * 1024
+
+    const dynamicUpload = multer({
+      storage,
+      fileFilter: (req, file, cb) => {
+        // Accept all file types
+        cb(null, true)
+      },
+      limits: { fileSize: fileLimit },
+    }).array("files")
+
+    dynamicUpload(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            error: `File size exceeds ${user.fileLimit || 100}MB limit`,
+          })
+        }
+        return res.status(400).json({ error: err.message })
+      }
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" })
+      }
+
+      console.log(`✅ Files uploaded for user ${user.username}: ${req.files.map((f) => f.filename).join(", ")}`)
+
+      res.json({
+        success: true,
+        files: req.files.map((file) => ({
+          filename: file.filename,
+          size: file.size,
+          path: file.path,
+        })),
+      })
+    })
+  } catch (error) {
+    console.error("Upload error:", error)
+    res.status(500).json({ error: "Upload failed" })
   }
 })
 

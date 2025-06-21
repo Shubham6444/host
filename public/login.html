@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Domain Manager</title>
     <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
 </head>
+
 <body>
     <div class="auth-container">
         <div class="auth-form">
@@ -38,23 +41,23 @@
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             // Show loading state
             btnText.style.display = 'none';
             loading.style.display = 'inline-block';
-            
+
             const formData = new FormData(e.target);
             const data = Object.fromEntries(formData);
-            
+
             try {
                 const response = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (result.success) {
                     showMessage('Login successful! Redirecting...', 'success');
                     setTimeout(() => {
@@ -79,4 +82,5 @@
         }
     </script>
 </body>
+
 </html>
